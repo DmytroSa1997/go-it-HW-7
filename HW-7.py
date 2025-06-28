@@ -2,7 +2,7 @@ from collections import UserDict
 from datetime import datetime, timedelta
 
 
-# ===== Класи =====
+# === Класи ===
 class Field:
     def __init__(self, value):
         self.value = value
@@ -25,9 +25,10 @@ class Phone(Field):
 class Birthday(Field):
     def __init__(self, value: str):
         try:
-            self.value = datetime.strptime(value, "%d.%m.%Y")
+            datetime.strptime(value, "%d.%m.%Y")  # перевірка
         except ValueError:
             raise ValueError("Invalid date format. Use DD.MM.YYYY")
+        super().__init__(value)  # зберігаємо як РЯДОК
 
 
 class Record:
@@ -50,9 +51,8 @@ class Record:
         old_phone = self.find_phone(old_number)
         if not old_phone:
             raise ValueError("Old phone number not found.")
-        validated_phone = Phone(new_number)
         self.remove_phone(old_number)
-        self.phones.append(validated_phone)
+        self.add_phone(new_number)
 
     def find_phone(self, number):
         for phone in self.phones:
@@ -65,8 +65,8 @@ class Record:
 
     def __str__(self):
         phones = "; ".join(p.value for p in self.phones)
-        birthday = self.birthday.value.strftime("%d.%m.%Y") if self.birthday else "N/A"
-        return f"Name: {self.name}, Phones: {phones}, Birthday: {birthday}"
+        birthday = self.birthday.value if self.birthday else "N/A"
+        return f"Name: {self.name.value}, Phones: {phones}, Birthday: {birthday}"
 
 
 class AddressBook(UserDict):
@@ -82,27 +82,31 @@ class AddressBook(UserDict):
 
     def get_upcoming_birthdays(self):
         today = datetime.today().date()
-        upcoming = []
+        result = []
         for record in self.data.values():
             if record.birthday:
-                bday = record.birthday.value.date().replace(year=today.year)
-                if bday < today:
-                    bday = bday.replace(year=today.year + 1)
-                delta = (bday - today).days
-                if 0 <= delta <= 7:
-                    if bday.weekday() in (5, 6):  # Saturday/Sunday
-                        bday += timedelta(days=7 - bday.weekday())
-                    upcoming.append({
+                bday_date = datetime.strptime(record.birthday.value, "%d.%m.%Y").date()
+                bday_this_year = bday_date.replace(year=today.year)
+                if bday_this_year < today:
+                    bday_this_year = bday_this_year.replace(year=today.year + 1)
+                delta_days = (bday_this_year - today).days
+                if 0 <= delta_days <= 7:
+                    congrat_date = bday_this_year
+                    if congrat_date.weekday() == 5:
+                        congrat_date += timedelta(days=2)
+                    elif congrat_date.weekday() == 6:
+                        congrat_date += timedelta(days=1)
+                    result.append({
                         "name": record.name.value,
-                        "birthday": bday.strftime("%d.%m.%Y")
+                        "birthday": congrat_date.strftime("%d.%m.%Y")
                     })
-        return upcoming
+        return result
 
     def __str__(self):
         return "\n".join(str(record) for record in self.data.values())
 
 
-# ===== Декоратор для помилок =====
+# === Декоратор ===
 def input_error(func):
     def wrapper(*args, **kwargs):
         try:
@@ -112,7 +116,7 @@ def input_error(func):
     return wrapper
 
 
-# ===== Команди =====
+# === Команди ===
 @input_error
 def add_contact(args, book):
     name, phone, *_ = args
@@ -162,7 +166,7 @@ def show_birthday(args, book):
     record = book.find(name)
     if not record or not record.birthday:
         raise ValueError("Birthday not found.")
-    return record.birthday.value.strftime("%d.%m.%Y")
+    return record.birthday.value
 
 
 @input_error
@@ -173,19 +177,22 @@ def birthdays(args, book):
     return "\n".join(f"{item['name']}: {item['birthday']}" for item in upcoming)
 
 
-# ===== Утиліта =====
+# === Парсер вводу ===
 def parse_input(user_input):
     parts = user_input.strip().split()
     return parts[0].lower(), parts[1:]
 
 
-# ===== Головна функція =====
+# === Головна функція ===
 def main():
     book = AddressBook()
     print("Welcome to the assistant bot!")
 
     while True:
-        user_input = input("Enter a command: ")
+        user_input = input("Enter a command: ").strip()
+        if not user_input:
+            continue
+
         command, args = parse_input(user_input)
 
         if command in ["close", "exit"]:
